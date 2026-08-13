@@ -1,0 +1,11 @@
+CREATE TABLE transactions (
+    id BIGSERIAL PRIMARY KEY,
+
+    idempotency_key VARCHAR(255) UNIQUE,
+
+    description TEXT NOT NULL,
+
+    posted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

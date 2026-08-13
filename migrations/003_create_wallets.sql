@@ -1,8 +1,8 @@
 CREATE TABLE wallets (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    balance NUMERIC(18, 2) NOT NULL DEFAULT 0,
-    currency VARCHAR(3) NOT NULL DEFAULT 'MNT',
+    account_id BIGINT NOT NULL UNIQUE,
+    currency VARCHAR(3) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_wallet_user
@@ -10,6 +10,8 @@ CREATE TABLE wallets (
         REFERENCES users(id)
         ON DELETE CASCADE,
 
-    CONSTRAINT positive_balance
-        CHECK (balance >= 0)
+    CONSTRAINT fk_wallet_account
+        FOREIGN KEY (account_id)
+        REFERENCES accounts(id)
+        ON DELETE RESTRICT
 );
