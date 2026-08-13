@@ -16,4 +16,4 @@ func main() {
 	defer conn.Close(context.Background())
 
 	fmt.Println("Database connected successfully!")
-}git 
+}
