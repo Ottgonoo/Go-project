@@ -5,11 +5,11 @@ import "time"
 type AccountType string
 
 const (
-	AccountTypeAsset    AccountType = "ASSET"
+	AccountTypeAsset     AccountType = "ASSET"
 	AccountTypeLiability AccountType = "LIABILITY"
-	AccountTypeEquity   AccountType = "EQUITY"
-	AccountTypeRevenue  AccountType = "REVENUE"
-	AccountTypeExpense  AccountType = "EXPENSE"
+	AccountTypeEquity    AccountType = "EQUITY"
+	AccountTypeRevenue   AccountType = "REVENUE"
+	AccountTypeExpense   AccountType = "EXPENSE"
 )
 
 type Account struct {
