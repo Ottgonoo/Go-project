@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -144,7 +145,7 @@ func TestWalletDepositWithdrawIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("database connection failed: %v", err)
 	}
-	defer conn.Close(ctx)
+	defer conn.Close()
 
 	// Repositories
 	accountRepository := repository.NewAccountRepository()
@@ -256,4 +257,118 @@ func TestWalletDepositWithdrawIntegration(t *testing.T) {
 	}
 
 	t.Logf("final balance: %d", finalBalance)
+}
+
+func TestConcurrentWithdraw(t *testing.T) {
+	ctx := context.Background()
+
+	conn, err := database.Connect()
+	if err != nil {
+		t.Fatalf("database connection failed: %v", err)
+	}
+	defer conn.Close()
+
+	accountRepository := repository.NewAccountRepository()
+	transactionRepository := repository.NewTransactionRepository()
+	entryRepository := repository.NewEntryRepository()
+	walletRepository := repository.NewWalletRepository()
+
+	ledgerService := NewLedgerService(
+		conn,
+		accountRepository,
+		transactionRepository,
+		entryRepository,
+	)
+
+	walletService := NewWalletService(
+		conn,
+		ledgerService,
+		walletRepository,
+		accountRepository,
+	)
+
+	// Wallet 3-ыг ашиглана.
+	walletID := int64(3)
+
+	// Одоогийн balance-ийг авна.
+	initialBalance, err := walletService.GetBalance(
+		ctx,
+		walletID,
+	)
+	if err != nil {
+		t.Fatalf("failed to get initial balance: %v", err)
+	}
+
+	t.Logf("initial balance: %d", initialBalance)
+
+	if initialBalance < 1000 {
+		t.Skipf(
+			"wallet %d needs at least 1000 balance, current balance: %d",
+			walletID,
+			initialBalance,
+		)
+	}
+
+	var wg sync.WaitGroup
+
+	successCount := 0
+	var mu sync.Mutex
+
+	// 10 concurrent withdraw.
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+
+		go func(i int) {
+			defer wg.Done()
+
+			_, err := walletService.Withdraw(
+				ctx,
+				WithdrawRequest{
+					WalletID: walletID,
+					Amount:   100,
+					IdempotencyKey: fmt.Sprintf(
+						"concurrent-withdraw-%d-%d",
+						time.Now().UnixNano(),
+						i,
+					),
+				},
+			)
+
+			if err == nil {
+				mu.Lock()
+				successCount++
+				mu.Unlock()
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	finalBalance, err := walletService.GetBalance(
+		ctx,
+		walletID,
+	)
+	if err != nil {
+		t.Fatalf("failed to get final balance: %v", err)
+	}
+
+	t.Logf("successful withdrawals: %d", successCount)
+	t.Logf("final balance: %d", finalBalance)
+
+	expectedBalance := initialBalance - int64(successCount*100)
+
+	if finalBalance != expectedBalance {
+		t.Fatalf(
+			"unexpected final balance: got %d, want %d",
+			finalBalance,
+			expectedBalance,
+		)
+	}
+
+	if finalBalance < 0 {
+		t.Fatalf(
+			"wallet balance must never be negative: %d",
+			finalBalance,
+		)
+	}
 }

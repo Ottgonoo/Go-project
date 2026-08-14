@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"ledger-wallet/internal/models"
 	"ledger-wallet/internal/repository"
@@ -21,14 +22,14 @@ var (
 )
 
 type LedgerService struct {
-	db                    *pgx.Conn
+	db                    *pgxpool.Pool
 	accountRepository     *repository.AccountRepository
 	transactionRepository *repository.TransactionRepository
 	entryRepository       *repository.EntryRepository
 }
 
 func NewLedgerService(
-	db *pgx.Conn,
+	db *pgxpool.Pool,
 	accountRepository *repository.AccountRepository,
 	transactionRepository *repository.TransactionRepository,
 	entryRepository *repository.EntryRepository,

@@ -137,7 +137,7 @@ func TestHistoricalBalance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("database connection failed: %v", err)
 	}
-	defer conn.Close(ctx)
+	defer conn.Close()
 
 	// Repositories.
 	accountRepository := repository.NewAccountRepository()

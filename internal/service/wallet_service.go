@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"ledger-wallet/internal/models"
 	"ledger-wallet/internal/repository"
@@ -19,14 +19,14 @@ var (
 )
 
 type WalletService struct {
-	db                *pgx.Conn
+	db                *pgxpool.Pool
 	ledgerService     *LedgerService
 	walletRepository  *repository.WalletRepository
 	accountRepository *repository.AccountRepository
 }
 
 func NewWalletService(
-	db *pgx.Conn,
+	db *pgxpool.Pool,
 	ledgerService *LedgerService,
 	walletRepository *repository.WalletRepository,
 	accountRepository *repository.AccountRepository,
