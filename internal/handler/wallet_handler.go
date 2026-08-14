@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -68,7 +69,11 @@ func (h *WalletHandler) Deposit(
 		return
 	}
 
-	walletID, err := walletIDFromPath(r.URL.Path, "/wallets/", "/deposit")
+	walletID, err := walletIDFromPath(
+		r.URL.Path,
+		"/wallets/",
+		"/deposit",
+	)
 	if err != nil {
 		http.Error(w, "invalid wallet id", http.StatusBadRequest)
 		return
@@ -90,6 +95,15 @@ func (h *WalletHandler) Deposit(
 		},
 	)
 	if err != nil {
+		if errors.Is(err, service.ErrIdempotencyConflict) {
+			http.Error(
+				w,
+				err.Error(),
+				http.StatusConflict,
+			)
+			return
+		}
+
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -119,7 +133,11 @@ func (h *WalletHandler) Withdraw(
 		return
 	}
 
-	walletID, err := walletIDFromPath(r.URL.Path, "/wallets/", "/withdraw")
+	walletID, err := walletIDFromPath(
+		r.URL.Path,
+		"/wallets/",
+		"/withdraw",
+	)
 	if err != nil {
 		http.Error(w, "invalid wallet id", http.StatusBadRequest)
 		return
@@ -141,6 +159,15 @@ func (h *WalletHandler) Withdraw(
 		},
 	)
 	if err != nil {
+		if errors.Is(err, service.ErrIdempotencyConflict) {
+			http.Error(
+				w,
+				err.Error(),
+				http.StatusConflict,
+			)
+			return
+		}
+
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -206,7 +233,6 @@ func walletIDFromPath(
 	prefix string,
 	suffix string,
 ) (int64, error) {
-
 	if !strings.HasPrefix(path, prefix) ||
 		!strings.HasSuffix(path, suffix) {
 		return 0, strconv.ErrSyntax
@@ -226,6 +252,7 @@ type transferRequest struct {
 	IdempotencyKey string `json:"idempotency_key"`
 }
 
+// POST /wallets/transfer
 func (h *WalletHandler) Transfer(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -261,6 +288,15 @@ func (h *WalletHandler) Transfer(
 	)
 
 	if err != nil {
+		if errors.Is(err, service.ErrIdempotencyConflict) {
+			http.Error(
+				w,
+				err.Error(),
+				http.StatusConflict,
+			)
+			return
+		}
+
 		http.Error(
 			w,
 			err.Error(),

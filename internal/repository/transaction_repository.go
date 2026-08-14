@@ -25,17 +25,28 @@ func (r *TransactionRepository) Create(
 		`
 		INSERT INTO transactions (
 			idempotency_key,
+			request_hash,
 			description,
 			posted_at
 		)
-		VALUES ($1, $2, COALESCE($3, CURRENT_TIMESTAMP))
-		RETURNING id, posted_at, created_at
+		VALUES ($1, $2, $3, COALESCE($4, CURRENT_TIMESTAMP))
+		RETURNING
+			id,
+			idempotency_key,
+			request_hash,
+			description,
+			posted_at,
+			created_at
 		`,
 		transaction.IdempotencyKey,
+		transaction.RequestHash,
 		transaction.Description,
 		transaction.PostedAt,
 	).Scan(
 		&transaction.ID,
+		&transaction.IdempotencyKey,
+		&transaction.RequestHash,
+		&transaction.Description,
 		&transaction.PostedAt,
 		&transaction.CreatedAt,
 	)
@@ -60,25 +71,29 @@ func (r *TransactionRepository) CreateIdempotent(
 		`
 		INSERT INTO transactions (
 			idempotency_key,
+			request_hash,
 			description,
 			posted_at
 		)
-		VALUES ($1, $2, COALESCE($3, CURRENT_TIMESTAMP))
+		VALUES ($1, $2, $3, COALESCE($4, CURRENT_TIMESTAMP))
 		ON CONFLICT (idempotency_key)
 		DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
 		RETURNING
 			id,
 			idempotency_key,
+			request_hash,
 			description,
 			posted_at,
 			created_at
 		`,
 		transaction.IdempotencyKey,
+		transaction.RequestHash,
 		transaction.Description,
 		transaction.PostedAt,
 	).Scan(
 		&created.ID,
 		&created.IdempotencyKey,
+		&created.RequestHash,
 		&created.Description,
 		&created.PostedAt,
 		&created.CreatedAt,
@@ -103,6 +118,7 @@ func (r *TransactionRepository) GetByIdempotencyKey(
 		SELECT
 			id,
 			idempotency_key,
+			request_hash,
 			description,
 			posted_at,
 			created_at
@@ -113,6 +129,7 @@ func (r *TransactionRepository) GetByIdempotencyKey(
 	).Scan(
 		&transaction.ID,
 		&transaction.IdempotencyKey,
+		&transaction.RequestHash,
 		&transaction.Description,
 		&transaction.PostedAt,
 		&transaction.CreatedAt,

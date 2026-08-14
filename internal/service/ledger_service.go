@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -44,6 +46,19 @@ type PostTransactionRequest struct {
 	IdempotencyKey string
 	Description    string
 	Entries        []models.Entry
+}
+
+func generateRequestHash(req PostTransactionRequest) string {
+	data := fmt.Sprintf(
+		"%s|%s|%v",
+		req.IdempotencyKey,
+		req.Description,
+		req.Entries,
+	)
+
+	hash := sha256.Sum256([]byte(data))
+
+	return hex.EncodeToString(hash[:])
 }
 
 // validateEntries checks the core double-entry bookkeeping rules.
@@ -126,8 +141,12 @@ func (s *LedgerService) PostTransaction(
 	)
 
 	if err == nil {
-		// Already processed.
-		// Do not create entries again.
+		requestHash := generateRequestHash(req)
+
+		if existingTransaction.RequestHash != requestHash {
+			return 0, ErrIdempotencyConflict
+		}
+
 		if err := tx.Commit(ctx); err != nil {
 			return 0, err
 		}
@@ -202,14 +221,17 @@ func (s *LedgerService) PostTransactionTx(
 	)
 
 	if err == nil {
-		// Already exists.
-		// IMPORTANT:
-		// Do not create entries again.
+		requestHash := generateRequestHash(req)
+
+		if existingTransaction.RequestHash != requestHash {
+			return 0, ErrIdempotencyConflict
+		}
+
 		return existingTransaction.ID, nil
 	}
-
 	transaction := models.Transaction{
 		IdempotencyKey: req.IdempotencyKey,
+		RequestHash:    generateRequestHash(req),
 		Description:    req.Description,
 	}
 
