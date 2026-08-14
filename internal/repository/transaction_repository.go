@@ -20,6 +20,13 @@ func (r *TransactionRepository) Create(
 	transaction models.Transaction,
 ) (models.Transaction, error) {
 
+	var postedAt interface{}
+	if !transaction.PostedAt.IsZero() {
+		postedAt = transaction.PostedAt
+	} else {
+		postedAt = nil
+	}
+
 	err := tx.QueryRow(
 		ctx,
 		`
@@ -41,7 +48,7 @@ func (r *TransactionRepository) Create(
 		transaction.IdempotencyKey,
 		transaction.RequestHash,
 		transaction.Description,
-		transaction.PostedAt,
+		postedAt,
 	).Scan(
 		&transaction.ID,
 		&transaction.IdempotencyKey,
@@ -66,6 +73,13 @@ func (r *TransactionRepository) CreateIdempotent(
 
 	var created models.Transaction
 
+	var postedAt interface{}
+	if !transaction.PostedAt.IsZero() {
+		postedAt = transaction.PostedAt
+	} else {
+		postedAt = nil
+	}
+
 	err := tx.QueryRow(
 		ctx,
 		`
@@ -89,7 +103,7 @@ func (r *TransactionRepository) CreateIdempotent(
 		transaction.IdempotencyKey,
 		transaction.RequestHash,
 		transaction.Description,
-		transaction.PostedAt,
+		postedAt,
 	).Scan(
 		&created.ID,
 		&created.IdempotencyKey,

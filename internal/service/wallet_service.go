@@ -409,5 +409,5 @@ func (s *WalletService) GetBalance(
 	return balance, nil
 }
 func getPlatformAssetAccountID() int64 {
-	return 2
+	return 1
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -157,9 +158,9 @@ func (s *LedgerService) PostTransaction(
 	// Transaction does not exist.
 	transaction := models.Transaction{
 		IdempotencyKey: req.IdempotencyKey,
+		RequestHash:    generateRequestHash(req),
 		Description:    req.Description,
 	}
-
 	createdTransaction, err := s.transactionRepository.Create(
 		ctx,
 		tx,
@@ -332,6 +333,106 @@ func (s *LedgerService) GetCurrentBalanceTx(
 		WHERE account_id = $1
 		`,
 		accountID,
+	).Scan(
+		&debitTotal,
+		&creditTotal,
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	switch account.Type {
+	case models.AccountTypeAsset,
+		models.AccountTypeExpense:
+
+		return debitTotal - creditTotal, nil
+
+	case models.AccountTypeLiability,
+		models.AccountTypeEquity,
+		models.AccountTypeRevenue:
+
+		return creditTotal - debitTotal, nil
+
+	default:
+		return 0, fmt.Errorf(
+			"%w: unknown account type %s",
+			ErrInvalidTransaction,
+			account.Type,
+		)
+	}
+}
+
+// GetHistoricalBalance returns the account balance
+// as it was at the given moment.
+//
+// Only transactions posted at or before the given time
+// are included in the calculation.
+//
+// ASSET / EXPENSE:
+//
+//	debit - credit
+//
+// LIABILITY / EQUITY / REVENUE:
+//
+//	credit - debit
+func (s *LedgerService) GetHistoricalBalance(
+	ctx context.Context,
+	accountID int64,
+	at time.Time,
+) (int64, error) {
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	defer tx.Rollback(ctx)
+
+	account, err := s.accountRepository.GetByID(
+		ctx,
+		tx,
+		accountID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	var debitTotal int64
+	var creditTotal int64
+
+	err = tx.QueryRow(
+		ctx,
+		`
+		SELECT
+			COALESCE(
+				SUM(
+					CASE
+						WHEN e.direction = 'DEBIT'
+						THEN e.amount
+						ELSE 0
+					END
+				),
+				0
+			),
+			COALESCE(
+				SUM(
+					CASE
+						WHEN e.direction = 'CREDIT'
+						THEN e.amount
+						ELSE 0
+					END
+				),
+				0
+			)
+		FROM entries e
+		JOIN transactions t
+			ON t.id = e.transaction_id
+		WHERE e.account_id = $1
+		  AND t.posted_at <= $2
+		`,
+		accountID,
+		at,
 	).Scan(
 		&debitTotal,
 		&creditTotal,

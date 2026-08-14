@@ -1,7 +1,9 @@
 CREATE TABLE transactions (
     id BIGSERIAL PRIMARY KEY,
 
-    idempotency_key VARCHAR(255) UNIQUE,
+    idempotency_key VARCHAR(255) UNIQUE NOT NULL,
+
+    request_hash VARCHAR(64) NOT NULL,
 
     description TEXT NOT NULL,
 
