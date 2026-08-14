@@ -285,12 +285,12 @@ func (s *WalletService) Transfer(
 		Description:    "wallet transfer",
 		Entries: []models.Entry{
 			{
-				AccountID: toWallet.AccountID,
+				AccountID: fromWallet.AccountID,
 				Direction: models.EntryDirectionDebit,
 				Amount:    req.Amount,
 			},
 			{
-				AccountID: fromWallet.AccountID,
+				AccountID: toWallet.AccountID,
 				Direction: models.EntryDirectionCredit,
 				Amount:    req.Amount,
 			},
@@ -313,9 +313,101 @@ func (s *WalletService) Transfer(
 	return transactionID, nil
 }
 
-// Temporary platform asset account.
+// CreateWallet creates a ledger liability account and
+// links it to a user as a wallet.
 //
-// This will later be replaced by a real system account lookup.
+// A wallet is backed by a ledger account.
+// The wallet balance is therefore derived from ledger entries,
+// not stored as an independent mutable balance.
+func (s *WalletService) CreateWallet(
+	ctx context.Context,
+	userID int64,
+	currency string,
+) (models.Wallet, error) {
+
+	if userID <= 0 {
+		return models.Wallet{}, errors.New("invalid user id")
+	}
+
+	if currency == "" {
+		return models.Wallet{}, errors.New("currency is required")
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return models.Wallet{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Every wallet is represented by a LIABILITY ledger account.
+	account := models.Account{
+		Name:     fmt.Sprintf("Wallet-%d", userID),
+		Type:     models.AccountTypeLiability,
+		Currency: currency,
+	}
+
+	createdAccount, err := s.accountRepository.Create(
+		ctx,
+		tx,
+		account,
+	)
+	if err != nil {
+		return models.Wallet{}, err
+	}
+
+	wallet := models.Wallet{
+		UserID:    userID,
+		AccountID: createdAccount.ID,
+		Currency:  currency,
+	}
+
+	createdWallet, err := s.walletRepository.Create(
+		ctx,
+		tx,
+		wallet,
+	)
+	if err != nil {
+		return models.Wallet{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return models.Wallet{}, err
+	}
+
+	return createdWallet, nil
+}
+
+func (s *WalletService) GetBalance(
+	ctx context.Context,
+	walletID int64,
+) (int64, error) {
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	wallet, err := s.walletRepository.GetByID(
+		ctx,
+		tx,
+		walletID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrWalletNotFound, err)
+	}
+
+	balance, err := s.ledgerService.GetCurrentBalanceTx(
+		ctx,
+		tx,
+		wallet.AccountID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return balance, nil
+}
 func getPlatformAssetAccountID() int64 {
-	return 1
+	return 2
 }

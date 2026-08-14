@@ -14,6 +14,7 @@ import (
 var (
 	ErrInvalidTransaction    = errors.New("invalid transaction")
 	ErrUnbalancedTransaction = errors.New("debits and credits must be equal")
+	ErrIdempotencyConflict   = errors.New("idempotency key already used with different request")
 )
 
 type LedgerService struct {
@@ -92,9 +93,8 @@ func validateEntries(entries []models.Entry) error {
 
 // PostTransaction creates an atomic double-entry transaction.
 //
-// The transaction and all ledger entries are written inside
-// one PostgreSQL transaction. If anything fails,
-// everything is rolled back.
+// If the idempotency key already exists, the existing transaction
+// is returned and new entries are NOT created.
 func (s *LedgerService) PostTransaction(
 	ctx context.Context,
 	req PostTransactionRequest,
@@ -104,6 +104,13 @@ func (s *LedgerService) PostTransaction(
 		return 0, err
 	}
 
+	if req.IdempotencyKey == "" {
+		return 0, fmt.Errorf(
+			"%w: idempotency key is required",
+			ErrInvalidTransaction,
+		)
+	}
+
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -111,6 +118,24 @@ func (s *LedgerService) PostTransaction(
 
 	defer tx.Rollback(ctx)
 
+	// Check whether this idempotency key already exists.
+	existingTransaction, err := s.transactionRepository.GetByIdempotencyKey(
+		ctx,
+		tx,
+		req.IdempotencyKey,
+	)
+
+	if err == nil {
+		// Already processed.
+		// Do not create entries again.
+		if err := tx.Commit(ctx); err != nil {
+			return 0, err
+		}
+
+		return existingTransaction.ID, nil
+	}
+
+	// Transaction does not exist.
 	transaction := models.Transaction{
 		IdempotencyKey: req.IdempotencyKey,
 		Description:    req.Description,
@@ -149,6 +174,9 @@ func (s *LedgerService) PostTransaction(
 //
 // This is used by wallet operations so that wallet locking,
 // balance checking and ledger posting happen atomically.
+//
+// If the idempotency key already exists, the existing transaction
+// is returned and new entries are NOT created.
 func (s *LedgerService) PostTransactionTx(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -157,6 +185,27 @@ func (s *LedgerService) PostTransactionTx(
 
 	if err := validateEntries(req.Entries); err != nil {
 		return 0, err
+	}
+
+	if req.IdempotencyKey == "" {
+		return 0, fmt.Errorf(
+			"%w: idempotency key is required",
+			ErrInvalidTransaction,
+		)
+	}
+
+	// Check whether this idempotency key was already processed.
+	existingTransaction, err := s.transactionRepository.GetByIdempotencyKey(
+		ctx,
+		tx,
+		req.IdempotencyKey,
+	)
+
+	if err == nil {
+		// Already exists.
+		// IMPORTANT:
+		// Do not create entries again.
+		return existingTransaction.ID, nil
 	}
 
 	transaction := models.Transaction{
@@ -273,11 +322,13 @@ func (s *LedgerService) GetCurrentBalanceTx(
 	switch account.Type {
 	case models.AccountTypeAsset,
 		models.AccountTypeExpense:
+
 		return debitTotal - creditTotal, nil
 
 	case models.AccountTypeLiability,
 		models.AccountTypeEquity,
 		models.AccountTypeRevenue:
+
 		return creditTotal - debitTotal, nil
 
 	default:

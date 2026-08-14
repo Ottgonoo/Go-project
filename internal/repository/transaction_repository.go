@@ -43,7 +43,52 @@ func (r *TransactionRepository) Create(
 	return transaction, err
 }
 
-// GetByIdempotencyKey returns an existing transaction for an idempotency key.
+// CreateIdempotent creates a transaction only if the
+// idempotency key does not already exist.
+//
+// If the key already exists, it returns the existing transaction.
+func (r *TransactionRepository) CreateIdempotent(
+	ctx context.Context,
+	tx pgx.Tx,
+	transaction models.Transaction,
+) (models.Transaction, error) {
+
+	var created models.Transaction
+
+	err := tx.QueryRow(
+		ctx,
+		`
+		INSERT INTO transactions (
+			idempotency_key,
+			description,
+			posted_at
+		)
+		VALUES ($1, $2, COALESCE($3, CURRENT_TIMESTAMP))
+		ON CONFLICT (idempotency_key)
+		DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
+		RETURNING
+			id,
+			idempotency_key,
+			description,
+			posted_at,
+			created_at
+		`,
+		transaction.IdempotencyKey,
+		transaction.Description,
+		transaction.PostedAt,
+	).Scan(
+		&created.ID,
+		&created.IdempotencyKey,
+		&created.Description,
+		&created.PostedAt,
+		&created.CreatedAt,
+	)
+
+	return created, err
+}
+
+// GetByIdempotencyKey returns an existing transaction
+// for an idempotency key.
 func (r *TransactionRepository) GetByIdempotencyKey(
 	ctx context.Context,
 	tx pgx.Tx,
